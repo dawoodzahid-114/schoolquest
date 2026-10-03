@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth/authContext";
+import { useAuth, isValidEmail } from "@/lib/auth/authContext";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Compass, Lock, Mail, User, BookOpen, ArrowRight, AlertCircle, ShieldCheck } from "lucide-react";
@@ -33,7 +33,11 @@ export default function SignUpPage() {
       return;
     }
     if (!email.trim()) {
-      setErrorMsg("Please enter a valid email address.");
+      setErrorMsg("Please enter your email address.");
+      return;
+    }
+    if (!isValidEmail(email)) {
+      setErrorMsg("Please enter a valid email address (e.g. name@example.com).");
       return;
     }
     if (password.length < 6) {

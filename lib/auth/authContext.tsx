@@ -19,6 +19,22 @@ interface AuthContextType {
   updateProfile: (updates: Partial<Profile>) => Promise<{ error?: string }>;
 }
 
+/**
+ * Validates standard email address format:
+ * - No whitespace
+ * - Valid local-part
+ * - '@' symbol
+ * - Domain name with at least one dot and valid characters
+ * Rejects: 'abc', 'hello@', 'sign up123@mail', 'test@domain'
+ * Accepts: 'name@example.com', 'student@school.edu', etc.
+ */
+export function isValidEmail(email: string): boolean {
+  if (!email || typeof email !== "string") return false;
+  const trimmed = email.trim();
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
+  return emailRegex.test(trimmed);
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Local fallback auth storage keys when Supabase env keys are not provided
@@ -139,12 +155,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const cleanEmail = email.trim().toLowerCase();
 
+      if (!cleanEmail) {
+        return { error: "Please enter your email address." };
+      }
+      if (!isValidEmail(cleanEmail)) {
+        return { error: "Please enter a valid email address (e.g. name@example.com)." };
+      }
+      if (!password) {
+        return { error: "Please enter your password." };
+      }
+
       if (isSupabaseConfigured && supabase) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password,
         });
-        if (error) return { error: error.message };
+        if (error) {
+          if (error.message.toLowerCase().includes("invalid login credentials")) {
+            return { error: "Invalid email or password. Please check your credentials and try again." };
+          }
+          if (error.message.toLowerCase().includes("email not confirmed")) {
+            return { error: "Please confirm your email address before logging in. Check your inbox for the confirmation link." };
+          }
+          return { error: error.message };
+        }
         if (data.user) {
           setUser({ id: data.user.id, email: data.user.email || cleanEmail });
           const { data: prof } = await supabase
@@ -190,8 +224,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const cleanEmail = email.trim().toLowerCase();
       const cleanUsername = username.trim();
 
-      if (!cleanEmail || !cleanUsername) {
-        return { error: "Email and username are required." };
+      if (!cleanUsername) {
+        return { error: "Display name or nickname is required." };
+      }
+      if (!cleanEmail) {
+        return { error: "Email address is required." };
+      }
+      if (!isValidEmail(cleanEmail)) {
+        return { error: "Please enter a valid email address (e.g. name@example.com)." };
       }
       if (password.length < 6) {
         return { error: "Password must be at least 6 characters long." };
@@ -202,8 +242,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: cleanEmail,
           password,
         });
-        if (error) return { error: error.message };
+        if (error) {
+          if (error.message.toLowerCase().includes("user already registered")) {
+            return { error: "An account with this email address already exists. Please log in." };
+          }
+          return { error: error.message };
+        }
         if (data.user) {
+          // If Supabase has email confirmation enabled and user is already registered, identities array is empty
+          if (data.user.identities && data.user.identities.length === 0) {
+            return { error: "An account with this email address already exists. Please log in." };
+          }
+
           const newProf: Profile = {
             id: data.user.id,
             username: cleanUsername,
@@ -211,7 +261,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             grade_level: gradeLevel || "Grade 10",
             created_at: new Date().toISOString(),
           };
-          await supabase.from("profiles").insert(newProf);
+          try {
+            await supabase.from("profiles").insert(newProf);
+          } catch {
+            // Profile may be created by trigger
+          }
           setUser({ id: data.user.id, email: cleanEmail });
           setProfile(newProf);
         }

@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth/authContext";
+import { useAuth, isValidEmail } from "@/lib/auth/authContext";
 import { loadStudentData, saveStudentData } from "@/lib/storage/studentStore";
 import { generateDailyQuests } from "@/lib/planning/studyPlanEngine";
 import { generateDeterministicRecommendations } from "@/lib/planning/recommendationEngine";
@@ -33,6 +33,11 @@ export default function LoginPage() {
 
     if (!email.trim() || !password) {
       setErrorMsg("Please enter both email and password.");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setErrorMsg("Please enter a valid email address (e.g. name@example.com).");
       return;
     }
 
